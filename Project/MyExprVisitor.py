@@ -82,16 +82,37 @@ class MyExprVisitor(ExprVisitor):
         return left_type
 
     def visitLogicalOrExpr(self, ctx):
-        return self.visit(ctx.logicalAndExpr(0))
+        left_type = self.visit(ctx.logicalAndExpr(0))
+        for i in range(1, len(ctx.logicalAndExpr())):
+            op = ctx.getChild(2*i - 1).getText()
+            right_type = self.visit(ctx.logicalAndExpr(i))
+
+            if left_type != VarType.BOOL or right_type != VarType.BOOL:
+                self.errors.append(f"Error: Operator '{op}' requires bool operands, got '{left_type.value if left_type else 'None'}' and '{right_type.value if right_type else 'None'}'.")
+            left_type = VarType.BOOL
+        return left_type
+
+    def visitLogicalAndExpr(self, ctx):
+        left_type = self.visit(ctx.equalityExpr(0))
+        for i in range(1, len(ctx.equalityExpr())):
+            op = ctx.getChild(2*i - 1).getText()
+            right_type = self.visit(ctx.equalityExpr(i))
+
+            if left_type != VarType.BOOL or right_type != VarType.BOOL:
+                self.errors.append(f"Error: Operator '{op}' requires bool operands, got '{left_type.value if left_type else 'None'}' and '{right_type.value if right_type else 'None'}'.")
+            left_type = VarType.BOOL
+        return left_type
     
     def visitEqualityExpr(self, ctx):
         left_type = self.visit(ctx.relationalExpr(0))
-        
         for i in range(1, len(ctx.relationalExpr())):
-            op = ctx.getChild(2 * i - 1).getText()
+            op = ctx.getChild(2*i - 1).getText()
             right_type = self.visit(ctx.relationalExpr(i))
+            allowed_for_eq = (VarType.INT, VarType.FLOAT, VarType.STRING)
 
-            if left_type != right_type:
+            if left_type not in allowed_for_eq or right_type not in allowed_for_eq:
+                self.errors.append(f"Error: Operator '{op}' only supports int, float, or string, got '{left_type.value}' and '{right_type.value}'.")
+            elif left_type != right_type:
                 self.errors.append(f"Error: Cannot compare '{left_type.value}' and '{right_type.value}' with '{op}'.")
             left_type = VarType.BOOL
         return left_type
@@ -179,3 +200,32 @@ class MyExprVisitor(ExprVisitor):
         if declared == VarType.FLOAT and actual == VarType.INT: 
             return True
         return False
+    
+    def visitIfStmt(self, ctx):
+        condition_type = self.visit(ctx.expr())
+        if condition_type != VarType.BOOL:
+            self.errors.append(f"Error: Condition in 'if' must be bool, got '{condition_type.value if condition_type else 'None'}'.")
+
+        self.visit(ctx.statement(0))
+        if ctx.statement(1) is not None:
+            self.visit(ctx.statement(1))
+        return None
+
+    def visitWhileStmt(self, ctx):
+        condition_type = self.visit(ctx.expr())
+        if condition_type != VarType.BOOL:
+            self.errors.append(f"Error: Condition in 'while' must be bool, got '{condition_type.value if condition_type else 'None'}'.")
+
+        self.visit(ctx.statement())
+        return None
+    
+    def visitRelationalExpr(self, ctx):
+        left_type = self.visit(ctx.additiveExpr(0))
+        for i in range(1, len(ctx.additiveExpr())):
+            op = ctx.getChild(2*i - 1).getText()
+            right_type = self.visit(ctx.additiveExpr(i))
+
+            if not self.is_numeric(left_type) or not self.is_numeric(right_type):
+                self.errors.append(f"Error: Operator '{op}' requires numeric operands, got '{left_type.value if left_type else 'None'}' and '{right_type.value if right_type else 'None'}'.")
+            left_type = VarType.BOOL
+        return left_type
